@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::process::{Command, Stdio};
 
 use hyprland::{data::Client, shared::HyprDataActiveOptional};
@@ -16,15 +17,17 @@ fn main() -> hyprland::shared::HResult<()> {
             .arg("new-pane")
             .spawn()
             .unwrap();
-    } else if active_window.class.contains("Alacritty") {
-        fun_name(active_window);
+    } else if let Some((command, dir_flag, skip)) = get_termainals().get(&active_window.class) {
+        let pid = get_child_pid(active_window, *skip);
+        let cwd = get_child_cwd(&pid);
+        launch_terminal(command, dir_flag, &cwd)
     } else {
         Command::new("alacritty").spawn().unwrap();
     };
     Ok(())
 }
 
-fn fun_name(active_window: Client) {
+fn get_child_pid(active_window: Client, skip_childern: usize) -> Vec<u8> {
     println!("{}", active_window.title);
     // println!("{cwd}");
     let pgrep = Command::new("pgrep")
@@ -35,13 +38,17 @@ fn fun_name(active_window: Client) {
         .unwrap();
 
     let pgrep_output = pgrep.wait_with_output().unwrap().stdout;
-    let child = pgrep_output
+    pgrep_output
         .split(|byte| *byte == '\n' as u8)
+        .skip(skip_childern)
         .next()
-        .unwrap();
+        .unwrap()
+        .to_vec()
+}
+
+fn get_child_cwd(child: &Vec<u8>) -> String {
     let child_pid = child.iter().map(|byte| *byte as char).collect();
-    println!("{child_pid}");
-    let cwd: String = Command::new("pwdx")
+    Command::new("pwdx")
         .arg::<String>(child_pid)
         .stdout(Stdio::piped())
         .spawn()
@@ -55,10 +62,30 @@ fn fun_name(active_window: Client) {
         .iter()
         .map(|byte| *byte as char)
         .filter(|c| *c != '\n')
-        .collect();
-    Command::new("alacritty")
-        .arg("--working-directory")
-        .arg(cwd)
+        .collect()
+}
+
+fn launch_terminal(terminal: &str, working_directory_arg: &str, working_directory: &str) {
+    Command::new(terminal)
+        .arg(working_directory_arg)
+        .arg(working_directory)
         .spawn()
         .unwrap();
+}
+
+fn get_termainals() -> HashMap<String, (&'static str, &'static str, usize)> {
+    [
+        // (class, (spawn_command, directory_flag, child_procces_index))
+
+        // The cwd is obtained by running pwdx on the shell...
+        // Most terminals have the shell as thier only child but kitty has two..
+        // The index tells the program which output of pgrep to use, probably 0
+        (
+            "Alacritty".to_owned(),
+            ("alacritty", "--working-directory", 0),
+        ),
+        ("kitty".to_owned(), ("kitty", "--directory", 1)),
+        ("st-256color".to_owned(), ("st", "-d", 0)),
+    ]
+    .into()
 }

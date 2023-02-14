@@ -29,5 +29,7 @@ SUPER+RETURN in hyprland.conf
 
 ### Supported terminals
 * Alacritty  
+* Kitty
+* St (requires workingdir patch)
 
 I may add more in future
