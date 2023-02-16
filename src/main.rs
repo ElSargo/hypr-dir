@@ -1,26 +1,18 @@
 use std::collections::HashMap;
+use std::env::args;
 use std::process::{Command, Stdio};
 
 use hyprland::{data::Client, shared::HyprDataActiveOptional};
 
 fn main() -> hyprland::shared::HResult<()> {
+    let other_args = args().into_iter().skip(1);
     let Some(active_window) = Client::get_active()? else {
         Command::new("alacritty").spawn().unwrap(); return Ok(())
     };
-    if active_window.title.contains("Zellij") {
-        let session = active_window.title.split_at(8).1.split(')').next().unwrap();
-        println!("{session}");
-        Command::new("zellij")
-            .arg("-s")
-            .arg(session)
-            .arg("action")
-            .arg("new-pane")
-            .spawn()
-            .unwrap();
-    } else if let Some((command, dir_flag, skip)) = get_termainals().get(&active_window.class) {
+    if let Some((command, dir_flag, skip, exec_flag)) = get_termainals().get(&active_window.class) {
         let pid = get_child_pid(active_window, *skip);
         let cwd = get_child_cwd(&pid);
-        launch_terminal(command, dir_flag, &cwd)
+        launch_terminal(command, dir_flag, &cwd, exec_flag, other_args)
     } else {
         Command::new("alacritty").spawn().unwrap();
     };
@@ -65,15 +57,27 @@ fn get_child_cwd(child: &Vec<u8>) -> String {
         .collect()
 }
 
-fn launch_terminal(terminal: &str, working_directory_arg: &str, working_directory: &str) {
-    Command::new(terminal)
-        .arg(working_directory_arg)
-        .arg(working_directory)
-        .spawn()
-        .unwrap();
+fn launch_terminal(
+    terminal: &str,
+    working_directory_flag: &str,
+    working_directory: &str,
+    exec_flag: &str,
+    other_args: impl Iterator<Item = String>,
+) {
+    let mut cmd = Command::new(terminal);
+    cmd.arg(working_directory_flag);
+    cmd.arg(working_directory);
+    if other_args.size_hint().0 > 0 {
+        cmd.arg(exec_flag);
+    }
+
+    for arg in other_args {
+        cmd.arg(arg);
+    }
+    cmd.spawn().unwrap();
 }
 
-fn get_termainals() -> HashMap<String, (&'static str, &'static str, usize)> {
+fn get_termainals() -> HashMap<String, (&'static str, &'static str, usize, &'static str)> {
     [
         // (class, (spawn_command, directory_flag, child_procces_index))
 
@@ -82,10 +86,9 @@ fn get_termainals() -> HashMap<String, (&'static str, &'static str, usize)> {
         // The index tells the program which output of pgrep to use, probably 0
         (
             "Alacritty".to_owned(),
-            ("alacritty", "--working-directory", 0),
+            ("alacritty", "--working-directory", 0, "-e"),
         ),
-        ("kitty".to_owned(), ("kitty", "--directory", 1)),
-        ("st-256color".to_owned(), ("st", "-d", 0)),
+        ("kitty".to_owned(), ("kitty", "--directory", 1, "")),
     ]
     .into()
 }
