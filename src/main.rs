@@ -4,17 +4,27 @@ use std::process::{Command, Stdio};
 
 use hyprland::{data::Client, shared::HyprDataActiveOptional};
 
-fn main() -> hyprland::shared::HResult<()> {
+fn main() {
+    if let None = sub_main() {
+        launch_terminal("kitty", "--directory", "~", "-e", "")
+    }
+}
+
+fn sub_main() -> Option<()> {
     let other_args = args().into_iter().skip(1);
-    let Some(active_window) = Client::get_active()? else {
-        Command::new("alacritty").spawn().unwrap(); return Ok(())
-    };
-    if let Some((command, dir_flag, skip, exec_flag)) = get_termainals().get(&active_window.class) {
-        let pid = get_child_pid(active_window, *skip);
-        let cwd = get_child_cwd(&pid);
-        launch_terminal(command, dir_flag, &cwd, exec_flag, other_args)
+    if let Some(active_window) = Client::get_active()? {
+        if let Some((command, dir_flag, skip, exec_flag)) =
+            get_termainals().get(&active_window.class)
+        {
+            let pid = get_child_pid(active_window, *skip);
+            let cwd = get_child_cwd(&pid);
+            launch_terminal(command, dir_flag, &cwd, exec_flag, other_args)
+        } else {
+            launch_terminal("kitty", "--directory", "~", "-e", other_args)
+        };
     } else {
-        Command::new("alacritty").spawn().unwrap();
+        // well
+        launch_terminal("kitty", "--directory", "~", "-e", other_args)
     };
     Ok(())
 }
@@ -88,7 +98,7 @@ fn get_termainals() -> HashMap<String, (&'static str, &'static str, usize, &'sta
             "Alacritty".to_owned(),
             ("alacritty", "--working-directory", 0, "-e"),
         ),
-        ("kitty".to_owned(), ("kitty", "--directory", 1, "")),
+        ("kitty".to_owned(), ("kitty", "--directory", 1, "-e")),
     ]
     .into()
 }
