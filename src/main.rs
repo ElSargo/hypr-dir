@@ -6,30 +6,29 @@ use hyprland::{data::Client, shared::HyprDataActiveOptional};
 
 fn main() {
     if let None = sub_main() {
-        launch_terminal("kitty", "--directory", "~", "-e", "")
+        let iterator = vec!["".to_owned()].into_iter();
+        launch_kitty("", iterator);
     }
 }
 
 fn sub_main() -> Option<()> {
     let other_args = args().into_iter().skip(1);
-    if let Some(active_window) = Client::get_active()? {
-        if let Some((command, dir_flag, skip, exec_flag)) =
-            get_termainals().get(&active_window.class)
-        {
-            let pid = get_child_pid(active_window, *skip);
+    if let Some(active_window) = Client::get_active().ok()? {
+        if &active_window.class == "kitty" {
+            let pid = get_child_pid(active_window);
             let cwd = get_child_cwd(&pid);
-            launch_terminal(command, dir_flag, &cwd, exec_flag, other_args)
+            launch_kitty(&cwd, other_args)
         } else {
-            launch_terminal("kitty", "--directory", "~", "-e", other_args)
+            launch_kitty("", other_args)
         };
     } else {
         // well
-        launch_terminal("kitty", "--directory", "~", "-e", other_args)
+        launch_kitty("", other_args)
     };
-    Ok(())
+    Some(())
 }
 
-fn get_child_pid(active_window: Client, skip_childern: usize) -> Vec<u8> {
+fn get_child_pid(active_window: Client) -> Vec<u8> {
     println!("{}", active_window.title);
     // println!("{cwd}");
     let pgrep = Command::new("pgrep")
@@ -42,7 +41,7 @@ fn get_child_pid(active_window: Client, skip_childern: usize) -> Vec<u8> {
     let pgrep_output = pgrep.wait_with_output().unwrap().stdout;
     pgrep_output
         .split(|byte| *byte == '\n' as u8)
-        .skip(skip_childern)
+        .skip(1)
         .next()
         .unwrap()
         .to_vec()
@@ -67,38 +66,17 @@ fn get_child_cwd(child: &Vec<u8>) -> String {
         .collect()
 }
 
-fn launch_terminal(
-    terminal: &str,
-    working_directory_flag: &str,
-    working_directory: &str,
-    exec_flag: &str,
-    other_args: impl Iterator<Item = String>,
-) {
-    let mut cmd = Command::new(terminal);
-    cmd.arg(working_directory_flag);
+fn launch_kitty(working_directory: &str, other_args: impl Iterator<Item = String>) {
+    let mut cmd = Command::new("kitty");
+    cmd.arg("--single-instance");
+    cmd.arg("--directory");
     cmd.arg(working_directory);
     if other_args.size_hint().0 > 0 {
-        cmd.arg(exec_flag);
+        cmd.arg("-e");
     }
 
     for arg in other_args {
         cmd.arg(arg);
     }
     cmd.spawn().unwrap();
-}
-
-fn get_termainals() -> HashMap<String, (&'static str, &'static str, usize, &'static str)> {
-    [
-        // (class, (spawn_command, directory_flag, child_procces_index))
-
-        // The cwd is obtained by running pwdx on the shell...
-        // Most terminals have the shell as thier only child but kitty has two..
-        // The index tells the program which output of pgrep to use, probably 0
-        (
-            "Alacritty".to_owned(),
-            ("alacritty", "--working-directory", 0, "-e"),
-        ),
-        ("kitty".to_owned(), ("kitty", "--directory", 1, "-e")),
-    ]
-    .into()
 }
