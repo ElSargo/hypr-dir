@@ -68,7 +68,7 @@ fn get_child_cwd(child: &Vec<u8>) -> String {
 
 fn launch_kitty(working_directory: &str, other_args: impl Iterator<Item = String>) {
     let mut cmd = Command::new("kitty");
-    cmd.arg("--single-instance");
+    // cmd.arg("--single-instance");
     cmd.arg("--directory");
     cmd.arg(working_directory);
     if other_args.size_hint().0 > 0 {
