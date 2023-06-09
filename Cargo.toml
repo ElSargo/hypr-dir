@@ -7,6 +7,9 @@ edition = "2021"
 
 [profile.release]
 lto = "thin"
+opt-level = 'z' # Optimize for size
 
 [dependencies]
-hyprland = "*"
+anyhow = "1.0.71"
+hyprland = "0.3.3"
+lazy_static = "1.4.0"
