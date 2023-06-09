@@ -1,81 +1,91 @@
-use std::env::args;
-use std::process::{Command, Stdio};
-
+use anyhow::{format_err, Result};
 use hyprland::{data::Client, shared::HyprDataActiveOptional};
+use psutil::process::Process;
+use std::{
+    env::{args, set_current_dir},
+    path::PathBuf,
+    process::Command,
+};
 
-fn main() {
-    if let None = sub_main() {
-        let iterator = vec!["".to_owned()].into_iter();
-        launch_kitty("", iterator);
-    }
+fn main() -> Result<()> {
+    let args = args().skip(1).collect::<Vec<_>>();
+    spawn(get_dir(), &args)?;
+    Ok(())
 }
 
-fn sub_main() -> Option<()> {
-    let other_args = args().into_iter().skip(1);
-    if let Some(active_window) = Client::get_active().ok()? {
-        if &active_window.class == "kitty" {
-            let pid = get_child_pid(active_window);
-            let cwd = get_child_cwd(&pid);
-            launch_kitty(&cwd, other_args)
-        } else {
-            launch_kitty("", other_args)
-        };
-    } else {
-        // well
-        launch_kitty("", other_args)
-    };
-    Some(())
+fn get_dir() -> Option<PathBuf> {
+    let (process_children, process_parents) = searchable_processes()?;
+
+    Client::get_active().ok().flatten().and_then(|client| {
+        get_child_cwd(client.pid as u32, &process_parents, &process_children, 0).0
+    })
 }
 
-fn get_child_pid(active_window: Client) -> Vec<u8> {
-    println!("{}", active_window.title);
-    // println!("{cwd}");
-    let pgrep = Command::new("pgrep")
-        .arg("-P")
-        .arg(format!("{}", active_window.pid))
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-
-    let pgrep_output = pgrep.wait_with_output().unwrap().stdout;
-    pgrep_output
-        .split(|byte| *byte == '\n' as u8)
-        .skip(1)
-        .next()
-        .unwrap()
-        .to_vec()
-}
-
-fn get_child_cwd(child: &Vec<u8>) -> String {
-    let child_pid = child.iter().map(|byte| *byte as char).collect();
-    Command::new("pwdx")
-        .arg::<String>(child_pid)
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap()
-        .wait_with_output()
-        .unwrap()
-        .stdout
-        .split(|byte| *byte == ' ' as u8)
-        .last()
-        .unwrap()
+fn searchable_processes() -> Option<(Vec<u32>, Vec<u32>)> {
+    let processes = psutil::process::processes().ok()?;
+    let mut processes_with_parent: Vec<_> = processes
+        .iter() // Just give us the ones with valid data
+        .flat_map(|process_result| process_result.as_ref().ok())
+        .flat_map(|process| {
+            process
+                .ppid()
+                .ok()
+                .map(|opt_ppid| (opt_ppid, process.pid()))
+        })
+        .flat_map(|(opt_ppid, pid)| opt_ppid.map(|ppid| (pid, ppid)))
+        .collect();
+    processes_with_parent.sort_by_key(|(_pid, ppid)| *ppid);
+    let process_children: Vec<_> = processes_with_parent
         .iter()
-        .map(|byte| *byte as char)
-        .filter(|c| *c != '\n')
-        .collect()
+        .map(|(pid, _ppid)| *pid)
+        .collect();
+    let process_parents: Vec<_> = processes_with_parent
+        .iter()
+        .map(|(_pid, ppid)| *ppid)
+        .collect();
+    Some((process_children, process_parents))
 }
 
-fn launch_kitty(working_directory: &str, other_args: impl Iterator<Item = String>) {
-    let mut cmd = Command::new("kitty");
-    // cmd.arg("--single-instance");
-    cmd.arg("--directory");
-    cmd.arg(working_directory);
-    if other_args.size_hint().0 > 0 {
-        cmd.arg("-e");
+fn get_child_cwd(
+    process: u32,
+    all_parents: &[u32],
+    all_children: &[u32],
+    depth: i32,
+) -> (Option<PathBuf>, i32) {
+    let children = get_children(process, all_parents, all_children);
+    match &children[..] {
+        &[] => (process_wd(process), 0),
+        &[only] => get_child_cwd(only, &all_parents, &all_children, depth + 1),
+        _ => children
+            .iter()
+            .map(|p| get_child_cwd(*p, &all_parents, &children, depth + 1))
+            .max_by_key(|(_p, d)| *d)
+            .unwrap(), // Empty case already handled
     }
+}
 
-    for arg in other_args {
-        cmd.arg(arg);
-    }
-    cmd.spawn().unwrap();
+fn process_wd(process: u32) -> Option<PathBuf> {
+    Process::new(process).ok()?.cwd().ok()
+}
+
+fn get_children(process: u32, all_parents: &[u32], all_children: &[u32]) -> Vec<u32> {
+    let lower_bound = all_parents.partition_point(|ele| ele < &process);
+    let upper_bound = all_parents.partition_point(|ele| ele <= &process);
+    all_children[lower_bound..upper_bound].to_owned()
+}
+
+fn spawn(path: Option<PathBuf>, args: &[String]) -> Result<()> {
+    path.map(|path| set_current_dir(&path));
+    args.iter()
+        .skip(1)
+        .fold(
+            Command::new(&args.first().ok_or(format_err!("Pass a program to run"))?),
+            |mut command, arg| {
+                command.arg(arg);
+                command
+            },
+        )
+        .spawn()?
+        .wait()?;
+    Ok(())
 }

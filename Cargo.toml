@@ -13,3 +13,4 @@ opt-level = 'z' # Optimize for size
 anyhow = "1.0.71"
 hyprland = "0.3.3"
 lazy_static = "1.4.0"
+psutil = "3.2.2"
