@@ -15,7 +15,7 @@ fn main() -> Result<()> {
 
 fn get_dir() -> Option<PathBuf> {
     let (process_children, process_parents) = searchable_processes()?;
-
+    assert_eq!(process_children.len(), process_parents.len());
     Client::get_active().ok().flatten().and_then(|client| {
         get_child_cwd(client.pid as u32, &process_parents, &process_children, 0).0
     })
@@ -58,7 +58,7 @@ fn get_child_cwd(
         &[only] => get_child_cwd(only, &all_parents, &all_children, depth + 1),
         _ => children
             .iter()
-            .map(|p| get_child_cwd(*p, &all_parents, &children, depth + 1))
+            .map(|p| get_child_cwd(*p, &all_parents, &all_children, depth + 1))
             .max_by_key(|(_p, d)| *d)
             .unwrap(), // Empty case already handled
     }
