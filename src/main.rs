@@ -8,17 +8,28 @@ use std::{
 };
 
 fn main() -> Result<()> {
-    let args = args().skip(1).collect::<Vec<_>>();
-    spawn(get_dir(), &args)?;
+    let mut args: Box<[String]> = args().skip(1).collect();
+    let dir = Client::get_active().ok().flatten().and_then(|client| {
+        if client.title.contains("Zellij") {
+            args = ["zellij", "run", "--"]
+                .into_iter()
+                .map(|s| s.to_string())
+                .chain(args.into_iter().map(|s| s.clone()).skip(1))
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            None
+        } else {
+            get_dir(client)
+        }
+    });
+    spawn(dir, &args)?;
     Ok(())
 }
 
-fn get_dir() -> Option<PathBuf> {
+fn get_dir(client: Client) -> Option<PathBuf> {
     let (process_children, process_parents) = searchable_processes()?;
     assert_eq!(process_children.len(), process_parents.len());
-    Client::get_active().ok().flatten().and_then(|client| {
-        get_child_cwd(client.pid as u32, &process_parents, &process_children, 0).0
-    })
+    get_child_cwd(client.pid as u32, &process_parents, &process_children, 0).0
 }
 
 fn searchable_processes() -> Option<(Vec<u32>, Vec<u32>)> {
