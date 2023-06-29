@@ -11,12 +11,21 @@ fn main() -> Result<()> {
     let mut args: Box<[String]> = args().skip(1).collect();
     let dir = Client::get_active().ok().flatten().and_then(|client| {
         if client.title.contains("Zellij") {
-            args = ["zellij", "run", "--"]
-                .into_iter()
-                .map(|s| s.to_string())
-                .chain(args.into_iter().map(|s| s.clone()).skip(1))
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
+            println!("{}", args.len());
+            if args.len() == 1 {
+                args = ["zellij", "action", "new-pane"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+            } else {
+                args = ["zellij", "run", "--"]
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .chain(args.into_iter().map(|s| s.clone()).skip(1))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+            }
             None
         } else {
             get_dir(client)
