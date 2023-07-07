@@ -10,14 +10,7 @@ use std::{
 fn main() -> Result<()> {
     let mut args: Box<[String]> = args().skip(1).collect();
     let dir = Client::get_active().ok().flatten().and_then(|client| {
-        if client.title.contains("Zellij") {
-            let name: String = client
-                .title
-                .chars()
-                .skip_while(|c| *c != '(')
-                .skip(1)
-                .take_while(|c| *c != ')')
-                .collect();
+        if let Some(name) = zellij_sesion_name(&client) {
             println!("{name}");
             if args.len() == 1 {
                 args = Box::new([
@@ -44,6 +37,19 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn zellij_sesion_name(client: &Client) -> Option<String> {
+    let mut chars = client.title.chars();
+    if (&mut chars)
+        .take(6)
+        .zip("Zellij".chars())
+        .any(|(a, b)| a != b)
+        || chars.next() != Some(' ')
+        || chars.next() != Some('(')
+    {
+        return None;
+    }
+    Some(chars.take_while(|c| *c != ')').collect())
+}
 fn get_dir(client: Client) -> Option<PathBuf> {
     let (process_children, process_parents) = searchable_processes()?;
     assert_eq!(process_children.len(), process_parents.len());
