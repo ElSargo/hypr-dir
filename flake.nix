@@ -1,5 +1,5 @@
 {
-  description = "Dev shell the project";
+  description = "System to open terminals in an inteligent way";
 
   inputs = {
     fenix = {
@@ -18,13 +18,14 @@
           cargo = rust;
           rustc = rust;
         };
-      in {
+      in rec {
         nixpkgs.overlays = [ fenix.overlays.complete ];
         devShells.default = pkgs.mkShell {
           buildInputs = [ rust pkgs.lldb_9 pkgs.sccache pkgs.mold pkgs.clang ];
         };
-
-        defaultPackage = rustPlatform.buildRustPackage {
+        overlays.default = (self: super: { new-terminal-hyprland = packages.default;  });
+        
+        packages.default = rustPlatform.buildRustPackage {
           name = "new-termainl-hyprland";
           src = ./.;
           cargoSha256 = "sha256-q87uXENhyAKjy2VB5Il/BBPJIcjAbOsHsKQTPaGrzZc=";
